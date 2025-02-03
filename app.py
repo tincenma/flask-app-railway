@@ -46,6 +46,14 @@ def add_cors_headers(response):
     response.headers['Access-Control-Expose-Headers'] = 'Authorization'
     return response
 
+@app.route('/')
+def index():
+    return "Flask API is running!"
+
+@app.route('/test', methods=['GET'])
+def test():
+    return jsonify({"message": "Server is running!"})
+
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -118,10 +126,6 @@ def handle_delete_thread(thread_id):
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-@app.route('/test', methods=['GET'])
-def test():
-    return jsonify({"message": "Server is running!"})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
