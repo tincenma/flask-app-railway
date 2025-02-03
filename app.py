@@ -119,5 +119,10 @@ def handle_delete_thread(thread_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/test', methods=['GET'])
+def test():
+    return jsonify({"message": "Server is running!"})
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
