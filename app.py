@@ -1,50 +1,31 @@
 from flask import Flask, request, jsonify
+from flask_pymongo import PyMongo
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 import bcrypt
 import os
+import datetime
 from dotenv import load_dotenv
 from chatbot import create_thread, delete_thread, add_message_to_thread, get_thread_messages, run_assistant
 
 load_dotenv()
 
 app = Flask(__name__)
+app.config["MONGO_URI"] = os.getenv("MONGO_URI")
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET")
 
-# Конфиг для JWT
-app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET", "super-secret-key")  # Лучше хранить в .env
+mongo = PyMongo(app)
 jwt = JWTManager(app)
-
-app.config.update({
-    'SESSION_COOKIE_SAMESITE': 'Lax',
-    'SESSION_COOKIE_SECURE': True,
-    'JWT_COOKIE_SECURE': True,
-    'JWT_COOKIE_SAMESITE': 'Lax'
-})
-
-# Разрешить доступ только с фронтенда
 CORS(app)
 
-# Инициализация лимитера
+# Лимитер
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
     default_limits=["50 per day", "10 per hour"]
 )
-
-# Простая база пользователей (лучше заменить на БД)
-users_db = {
-    "admin@khc.kz": {
-        "password": bcrypt.hashpw("1234".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    }
-}
-
-@app.after_request
-def add_cors_headers(response):
-    response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'
-    response.headers['Access-Control-Expose-Headers'] = 'Authorization'
-    return response
 
 @app.route('/')
 def index():
@@ -54,6 +35,34 @@ def index():
 def test():
     return jsonify({"message": "Server is running!"})
 
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    
+    required_fields = ['fullname', 'email', 'password', 'mobile']
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    if mongo.db.users.find_one({"email": data['email']}):
+        return jsonify({"error": "Email already exists"}), 409
+
+    hashed_password = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+    user_data = {
+        "fullname": data['fullname'],
+        "structunit": data.get('structunit', ''),
+        "mobile": data['mobile'],
+        "email": data['email'],
+        "password": hashed_password,
+        "created_at": datetime.datetime.utcnow()
+    }
+
+    try:
+        mongo.db.users.insert_one(user_data)
+        return jsonify({"success": True}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -61,17 +70,17 @@ def login():
     password = data.get('password')
 
     if not email or not password:
-        return jsonify({"error": "Необходимо указать email и пароль"}), 400
+        return jsonify({"error": "Email and password required"}), 400
 
-    user = users_db.get(email)
+    user = mongo.db.users.find_one({"email": email})
     if not user:
-        return jsonify({"error": "Неверные учетные данные"}), 401
+        return jsonify({"error": "Invalid credentials"}), 401
 
     if bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
-        access_token = create_access_token(identity=email)
+        access_token = create_access_token(identity=str(user['_id']))
         return jsonify(access_token=access_token)
     
-    return jsonify({"error": "Неверные учетные данные"}), 401
+    return jsonify({"error": "Invalid credentials"}), 401
 
 ### 🔹 API ЗАЩИЩЕННЫЕ JWT
 @app.route('/create-thread', methods=['POST'])
