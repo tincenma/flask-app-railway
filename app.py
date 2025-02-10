@@ -3,11 +3,12 @@ from flask_pymongo import PyMongo
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 import bcrypt
 import os
 import datetime
 from dotenv import load_dotenv
+from bson.objectid import ObjectId
 from chatbot import create_thread, delete_thread, add_message_to_thread, get_thread_messages, run_assistant
 
 load_dotenv()
@@ -50,10 +51,13 @@ def register():
 
     user_data = {
         "fullname": data['fullname'],
-        "structunit": data.get('structunit', ''),
-        "mobile": data['mobile'],
         "email": data['email'],
         "password": hashed_password,
+        "mobile": data['mobile'],
+        "structunit": data.get('structunit', ''),
+        "dob": data.get("dob", ""),
+        "city": data.get("city", ""),
+        "address": data.get("address", ""),
         "created_at": datetime.datetime.utcnow()
     }
 
@@ -81,6 +85,66 @@ def login():
         return jsonify(access_token=access_token)
     
     return jsonify({"error": "Invalid credentials"}), 401
+
+@app.route('/profile', methods=['GET'])
+@jwt_required()
+def get_profile():
+    try:
+        user_id = get_jwt_identity()
+        user = mongo.db.users.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        return jsonify({
+            "fullname": user.get("fullname"),
+            "email": user.get("email"),
+            "mobile": user.get("mobile"),
+            "structunit": user.get("structunit", ""),
+            "dob": user.get("dob", ""),
+            "city": user.get("city", ""),
+            "address": user.get("address", "")
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/profile', methods=['PUT'])
+@jwt_required()
+def update_profile():
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        # Email uniqueness check
+        if 'email' in data:
+            existing_user = mongo.db.users.find_one({
+                "email": data['email'],
+                "_id": {"$ne": ObjectId(user_id)}
+            })
+            if existing_user:
+                return jsonify({"error": "Email already in use"}), 400
+
+        # Prepare update data
+        update_fields = {
+            "fullname": data.get("fullname"),
+            "email": data.get("email"),
+            "mobile": data.get("mobile"),
+            "dob": data.get("dob"),
+            "city": data.get("city"),
+            "address": data.get("address")
+        }
+
+        # Remove None values
+        update_data = {k: v for k, v in update_fields.items() if v is not None}
+        
+        # Update database
+        result = mongo.db.users.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": update_data}
+        )
+        
+        return jsonify({"success": True}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 ### 🔹 API ЗАЩИЩЕННЫЕ JWT
 @app.route('/create-thread', methods=['POST'])
