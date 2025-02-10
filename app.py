@@ -159,7 +159,7 @@ def handle_create_thread():
 
 @app.route('/chat', methods=['POST'])
 @jwt_required()
-@limiter.limit("5/minute")
+@limiter.limit("10/minute")
 def handle_chat():
     """Обрабатывает сообщение пользователя и возвращает ответ ассистента (Только для авторизованных)."""
     try:
@@ -179,6 +179,7 @@ def handle_chat():
 
 @app.route('/get-messages/<thread_id>', methods=['GET'])
 @jwt_required()
+@limiter.limit("20/minute")
 def handle_get_messages(thread_id):
     """Возвращает историю сообщений (Только для авторизованных)."""
     try:
