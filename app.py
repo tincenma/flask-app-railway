@@ -19,7 +19,7 @@ app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET")
 
 mongo = PyMongo(app)
 jwt = JWTManager(app)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "https://gas-service.kz", "methods": ["GET", "POST", "PUT", "DELETE"]}}, supports_credentials=True)
 
 # Лимитер
 limiter = Limiter(
